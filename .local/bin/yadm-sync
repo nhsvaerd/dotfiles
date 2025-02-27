@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# Get current YADM branch
+BRANCH=$(yadm branch --show-current)
+echo "📂 Detected YADM branch: $BRANCH"
+
+# Detect untracked files
+UNTRACKED_FILES=$(yadm status --short | awk '$1 == "??" {print $2}')
+
+if [[ -n "$UNTRACKED_FILES" ]]; then
+    echo "⚠️ Untracked files detected:"
+    echo "$UNTRACKED_FILES"
+    read -p "Would you like to add all untracked files? (yes/no): " CONFIRM_ADD
+
+    if [[ "$CONFIRM_ADD" == "yes" ]]; then
+        echo "📂 Adding untracked files..."
+        yadm add $UNTRACKED_FILES
+    else
+        echo "❌ Skipping untracked files."
+    fi
+fi
+
+# If on 'gnome', dump dconf settings before committing
+if [[ "$BRANCH" == "gnome" ]]; then
+    echo "🔄 Updating GNOME settings..."
+    dconf dump / > ~/.config/dconf/user-settings.conf
+    yadm add ~/.config/dconf/user-settings.conf
+fi
+
+# Commit and push changes
+yadm commit -m "Auto-sync changes on branch: $BRANCH"
+yadm push
+
+echo "✅ YADM sync complete!"

@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# Get current YADM branch
+BRANCH=$(yadm branch --show-current)
+echo "📂 Detected YADM branch: $BRANCH"
+
+# Display a warning message and ask for confirmation
+echo "⚠️ WARNING: This will rollback the last committed changes in YADM."
+if [[ "$BRANCH" == "gnome" ]]; then
+    echo "⚠️ Additionally, it will restore the last committed GNOME settings!"
+fi
+read -p "Are you sure you want to proceed? (yes/no): " CONFIRM
+
+# Check user confirmation
+if [[ "$CONFIRM" != "yes" ]]; then
+    echo "❌ Rollback canceled."
+    exit 0
+fi
+
+# If on 'gnome', restore the last committed dconf settings before rollback
+if [[ "$BRANCH" == "gnome" ]]; then
+    echo "🔄 Restoring last committed GNOME settings..."
+    yadm checkout ~/.config/dconf/user-settings.conf
+    dconf load / < ~/.config/dconf/user-settings.conf
+    echo "✅ GNOME settings restored!"
+fi
+
+# Undo last commit
+echo "🔄 Rolling back last commit..."
+yadm reset --hard HEAD~1
+yadm pull --rebase
+
+echo "✅ YADM rollback complete!"
