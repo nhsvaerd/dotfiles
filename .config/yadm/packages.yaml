@@ -1,0 +1,32 @@
+branches:
+  root:
+    add-packages:
+      apt:
+        - name: mc
+        - name: curl
+        - name: micro
+        - name: git
+        - name: htop
+        - name: flatpak
+        - name: syncthing
+  gnome:
+    add-packages:
+      apt:
+        - name: virt-manager
+        - name: gnome-core
+        - name: gnome-tweaks
+        - name: gnome-shell-extensions
+        - name: gnome-shell-extension-manager
+        - name: gnome-software-plugin-flatpak
+      flatpak:
+        - name: floorp
+          remote: flathub
+    remove-packages:
+      apt:
+        - name: transmission-gtk
+        - name: gnome-remote-desktop
+        - name: gnome-games
+        - name: gnome-weather
+        - name: simple-scan        
+    
+      
