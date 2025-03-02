@@ -142,6 +142,12 @@ if [[ "$SELECTED_BRANCH" == "gnome" ]]; then
     sudo apt install -y gnome-core
     dconf load / < ~/.config/dconf/user-settings.conf
     echo "✅ GNOME settings applied!"
+
+    echo "🔄 Restoring GNOME extensions..."
+    while read -r extension; do
+        gnome-extensions enable "$extension" 2>/dev/null || echo "⚠️ Warning: Extension $extension not found."
+    done < ~/.config/gnome-enabled-extensions.txt
+    echo "✅ GNOME setup complete!"
 fi
 
 echo "✅ YADM bootstrap complete!"

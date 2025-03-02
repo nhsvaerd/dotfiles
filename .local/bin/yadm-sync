@@ -24,7 +24,9 @@ fi
 if [[ "$BRANCH" == "gnome" ]]; then
     echo "🔄 Updating GNOME settings..."
     dconf dump / > ~/.config/dconf/user-settings.conf
+    gnome-extensions list --enabled > ~/.config/gnome-enabled-extensions.txt
     yadm add ~/.config/dconf/user-settings.conf
+    yadm add ~/.config/gnome-enabled-extensions.txt
 fi
 
 # Commit and push changes

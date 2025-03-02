@@ -1,0 +1,5 @@
+bluetooth-quick-connect@bjarosze.gmail.com
+dash-to-panel@jderose9.github.com
+arcmenu@arcmenu.com
+drive-menu@gnome-shell-extensions.gcampax.github.com
+user-theme@gnome-shell-extensions.gcampax.github.com
