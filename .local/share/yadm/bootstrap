@@ -21,24 +21,33 @@ fi
 # Ensure required base packages are installed
 sudo apt update && sudo apt install -y dialog git
 
-# Fetch list of YADM branches (excluding `root`)
+# Fetch list of available YADM branches (excluding `root`)
 AVAILABLE_BRANCHES=$(yadm branch -r | grep -vE "root|HEAD" | awk -F'origin/' '{print $2}')
 
-# Prompt user for a branch
+# Prompt user to select a branch
 echo "Available setup profiles:"
 PS3="Select a branch to configure the system (default is 'root' only): "
 select SELECTED_BRANCH in $AVAILABLE_BRANCHES "Skip"; do
     if [[ -n "$SELECTED_BRANCH" && "$SELECTED_BRANCH" != "Skip" ]]; then
-        echo "Selected branch: $SELECTED_BRANCH"
+        echo "✅ Selected branch: $SELECTED_BRANCH"
         break
     elif [[ "$SELECTED_BRANCH" == "Skip" ]]; then
         echo "Skipping additional configurations."
         SELECTED_BRANCH=""
         break
     else
-        echo "Invalid selection. Please try again."
+        echo "❌ Invalid selection. Please try again."
     fi
 done
+
+# Switch to the selected branch
+if [[ -n "$SELECTED_BRANCH" ]]; then
+    echo "🔄 Switching to branch: $SELECTED_BRANCH"
+    yadm checkout "$SELECTED_BRANCH"
+    echo "🔄 Pulling latest updates from GitHub..."
+    yadm pull --rebase
+    echo "✅ Repository is up to date."
+fi
 
 # Define package list path
 PACKAGE_FILE="$HOME/.config/yadm/packages.yaml"
