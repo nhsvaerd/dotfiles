@@ -24,7 +24,7 @@ sudo apt update && sudo apt install -y dialog git
 # Fetch list of available YADM branches (excluding `root`)
 AVAILABLE_BRANCHES=$(yadm branch -r | grep -vE "root|HEAD" | awk -F'origin/' '{print $2}')
 
-# Prompt user to select a branch
+# Prompt user for branch selection
 echo "Available setup profiles:"
 PS3="Select a branch to configure the system (default is 'root' only): "
 select SELECTED_BRANCH in $AVAILABLE_BRANCHES "Skip"; do
@@ -40,13 +40,18 @@ select SELECTED_BRANCH in $AVAILABLE_BRANCHES "Skip"; do
     fi
 done
 
-# Switch to the selected branch
+# Switch to selected branch if different from current
 if [[ -n "$SELECTED_BRANCH" ]]; then
-    echo "🔄 Switching to branch: $SELECTED_BRANCH"
-    yadm checkout "$SELECTED_BRANCH"
-    echo "🔄 Pulling latest updates from GitHub..."
-    yadm pull --rebase
-    echo "✅ Repository is up to date."
+    CURRENT_BRANCH=$(yadm branch --show-current)
+    if [[ "$CURRENT_BRANCH" != "$SELECTED_BRANCH" ]]; then
+        echo "🔄 Switching to branch: $SELECTED_BRANCH"
+        yadm checkout "$SELECTED_BRANCH"
+        echo "🔄 Pulling latest updates from GitHub..."
+        yadm pull --rebase
+        echo "✅ Repository is up to date."
+    else
+        echo "✅ Already on the selected branch. No need to pull again."
+    fi
 fi
 
 # Define package list path
@@ -65,7 +70,10 @@ install_apt_packages() {
         name=$(echo "$pkg" | yq ".name")
         params=$(echo "$pkg" | yq ".parameters // empty")
         echo "Installing: $name $params"
-        sudo apt install -y $params "$name"
+        if ! sudo apt install -y $params "$name"; then
+            echo "❌ Error installing $name. Exiting..."
+            exit 1
+        fi
     done
 }
 
@@ -107,12 +115,19 @@ remove_flatpak_packages() {
 
 # Remove Snap if present
 if command -v snap &> /dev/null; then
-    echo "⚠️ Snap detected! Removing all Snap packages and purging Snap..."
-    sudo snap remove --purge $(snap list | awk 'NR>1 {print $1}')
+    if snap list | grep -q "Name"; then
+        echo "Removing all Snap packages..."
+        sudo snap remove --purge $(snap list | awk 'NR>1 {print $1}')
+    fi
+
+    echo "Purging Snap..."
     sudo apt remove --purge -y snapd
     sudo rm -rf /var/snap /snap /var/lib/snapd
     echo "✅ Snap removed successfully!"
 fi
+
+
+
 
 # Install packages from root + selected branch (if any)
 install_apt_packages "root"
@@ -139,13 +154,22 @@ source ~/.bashrc 2>/dev/null || source ~/.zshrc 2>/dev/null
 # Apply GNOME settings if `gnome` branch was selected
 if [[ "$SELECTED_BRANCH" == "gnome" ]]; then
     echo "Installing GNOME and applying GNOME settings..."
-    sudo apt install -y gnome-core
+    if ! dpkg -l | grep -q gnome-shell; then
+        echo "Installing GNOME..."
+        sudo apt install -y gnome-core
+    else
+        echo "✅ GNOME already installed. Skipping install..."
+    fi
     dconf load / < ~/.config/dconf/user-settings.conf
     echo "✅ GNOME settings applied!"
 
     echo "🔄 Restoring GNOME extensions..."
     while read -r extension; do
-        gnome-extensions enable "$extension" 2>/dev/null || echo "⚠️ Warning: Extension $extension not found."
+        if gnome-extensions info "$extension" &>/dev/null; then
+            gnome-extensions enable "$extension"
+        else
+            echo "⚠️ Warning: Extension $extension not found."
+        fi
     done < ~/.config/gnome-enabled-extensions.txt
     echo "✅ GNOME setup complete!"
 fi
