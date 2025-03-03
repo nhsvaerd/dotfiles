@@ -11,16 +11,13 @@ yadm fetch --all
 # Detect current branch
 CURRENT_BRANCH=$(yadm branch --show-current)
 
-# Fetch list of available YADM branches (excluding `HEAD`)
-AVAILABLE_BRANCHES=$(yadm branch -r | grep -vE "HEAD" | awk -F'origin/' '{print $2}')
-
-# Add an option to keep the current branch
-AVAILABLE_BRANCHES="$CURRENT_BRANCH $AVAILABLE_BRANCHES Skip"
+# List remote branches (no local branches, no duplicates)
+AVAILABLE_BRANCHES=$(yadm branch -r | grep -vE "HEAD" | sed 's|origin/||' | sort -u)
 
 # Prompt user to select a branch
 echo "Available setup profiles:"
-PS3="Select a branch to configure the system (default is '$CURRENT_BRANCH'): "
-select SELECTED_BRANCH in $AVAILABLE_BRANCHES; do
+PS3="Select a branch to configure the system: "
+select SELECTED_BRANCH in $AVAILABLE_BRANCHES "Skip"; do
     if [[ -n "$SELECTED_BRANCH" && "$SELECTED_BRANCH" != "Skip" ]]; then
         echo "✅ Selected branch: $SELECTED_BRANCH"
         break
