@@ -25,6 +25,7 @@
       { "name": "gnome-remote-desktop" },
       { "name": "gnome-games" },
       { "name": "gnome-weather" },
+      { "name": "evolution" },
       { "name": "simple-scan" }
     ]
   }
