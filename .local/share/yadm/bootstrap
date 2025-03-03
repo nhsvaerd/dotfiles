@@ -5,6 +5,9 @@ echo "🚀 Running YADM bootstrap script..."
 # Ensure required base packages are installed
 sudo apt update && sudo apt install -y dialog git jq
 
+# Fetch all remote branches before listing them
+yadm fetch --all
+
 # Detect current branch
 CURRENT_BRANCH=$(yadm branch --show-current)
 
@@ -29,9 +32,11 @@ select SELECTED_BRANCH in $AVAILABLE_BRANCHES; do
     fi
 done
 
-# Switch to selected branch if different from current
-if [[ "$CURRENT_BRANCH" != "$SELECTED_BRANCH" ]]; then
-    echo "🔄 Switching to branch: $SELECTED_BRANCH"
+# Ensure selected branch is available locally
+if ! yadm rev-parse --verify "$SELECTED_BRANCH" &>/dev/null; then
+    echo "🌐 Fetching branch $SELECTED_BRANCH from remote..."
+    yadm checkout -t origin/"$SELECTED_BRANCH"
+else
     yadm checkout "$SELECTED_BRANCH"
 fi
 
