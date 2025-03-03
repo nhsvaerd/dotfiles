@@ -92,25 +92,75 @@ echo 'alias yadm-undo="$HOME/.local/bin/yadm-undo"' >> ~/.zshrc
 # Reload shell configuration
 source ~/.bashrc 2>/dev/null || source ~/.zshrc 2>/dev/null
 
-# Apply GNOME settings if `gnome` branch was selected
+# Process GNOME extensions and settings if `gnome` branch was selected
 if [[ "$SELECTED_BRANCH" == "gnome" ]]; then
     echo "🖥 Installing GNOME and applying GNOME settings..."
-    if ! dpkg -l | grep -q gnome-shell; then
-        sudo apt install -y gnome-core
+    
+    # Ensure GNOME and dependencies are installed
+    sudo apt install -y gnome-core gnome-shell-extensions gnome-shell-extension-manager pipx
+
+    # Ensure pipx is set up
+    pipx ensurepath
+    export PATH=$HOME/.local/bin:$PATH  # Ensure pipx-installed CLI tools are available
+
+    # Install gnome-extensions-cli via pipx if missing
+    if ! command -v gnome-extensions-cli &>/dev/null; then
+        echo "📦 Installing gnome-extensions-cli..."
+        pipx install gnome-extensions-cli
     fi
+
+    echo "🔄 Syncing GNOME extensions with repo list..."
+
+    # Define extensions directory
+    EXTENSIONS_DIR="$HOME/.local/share/gnome-shell/extensions"
+    mkdir -p "$EXTENSIONS_DIR"
+
+    # 🔥 **Remove user-installed extensions and disable system ones not in the list** 🔥
+    while read -r installed_extension; do
+        if [[ -d "/usr/share/gnome-shell/extensions/$installed_extension" ]]; then
+            echo "🔹 Disabling system extension: $installed_extension"
+            gnome-extensions disable "$installed_extension"
+            continue
+        fi
+
+        echo "❌ Removing unlisted user-installed extension: $installed_extension"
+        gnome-extensions disable "$installed_extension"
+        gnome-extensions uninstall "$installed_extension"
+    done < <(comm -23 <(gnome-extensions list | sort) <(sort ~/.config/gnome-enabled-extensions.txt))
+
+    # 🛠 **Install and enable missing extensions** 🛠
+    while read -r extension; do
+        echo "Checking extension: $extension"
+
+        if gnome-extensions list | grep -q "$extension"; then
+            echo "✅ Already installed: $extension"
+            gnome-extensions enable "$extension"
+        else
+            echo "⚠️ Installing missing extension: $extension"
+            if gnome-extensions-cli install "$extension"; then
+                echo "✅ Installed: $extension"
+                gnome-extensions enable "$extension"
+            else
+                echo "❌ Error installing $extension. It may not be available."
+            fi
+        fi
+    done < ~/.config/gnome-enabled-extensions.txt
+
+    # **Apply GNOME settings from dconf AFTER extension installation**
     if [ -f "$HOME/.config/dconf/user-settings.conf" ]; then
+        echo "🔄 Applying GNOME settings from dconf..."
         dconf load / < "$HOME/.config/dconf/user-settings.conf"
+        echo "✅ GNOME settings applied!"
     else
         echo "⚠️ No GNOME dconf settings found. Skipping..."
     fi
 
-    echo "🔄 Restoring GNOME extensions..."
-    while read -r extension; do
-        if gnome-extensions info "$extension" &>/dev/null; then
-            gnome-extensions enable "$extension"
-        fi
-    done < "$HOME/.config/gnome-enabled-extensions.txt"
-    echo "✅ GNOME setup complete!"
+    # Restart GNOME Shell to apply changes
+    echo "🔄 Restarting GNOME Shell..."
+    killall -3 gnome-shell || echo "⚠️ Could not restart GNOME Shell. Log out and log back in manually."
+
+    echo "✅ GNOME extensions and settings applied successfully!"
 fi
+
 
 echo "✅ YADM bootstrap complete!"
