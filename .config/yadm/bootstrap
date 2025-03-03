@@ -1,0 +1,115 @@
+#!/bin/bash
+
+echo "🚀 Running YADM bootstrap script..."
+
+# Ensure required base packages are installed
+sudo apt update && sudo apt install -y dialog git jq
+
+# Fetch all remote branches before listing them
+yadm fetch --all
+
+# Detect current branch
+CURRENT_BRANCH=$(yadm branch --show-current)
+
+# List remote branches (no local branches, no duplicates)
+AVAILABLE_BRANCHES=$(yadm branch -r | grep -vE "HEAD" | sed 's|origin/||' | sort -u)
+
+# Prompt user to select a branch
+echo "Available setup profiles:"
+PS3="Select a branch to configure the system: "
+select SELECTED_BRANCH in $AVAILABLE_BRANCHES "Skip"; do
+    if [[ -n "$SELECTED_BRANCH" && "$SELECTED_BRANCH" != "Skip" ]]; then
+        echo "✅ Selected branch: $SELECTED_BRANCH"
+        break
+    elif [[ "$SELECTED_BRANCH" == "Skip" ]]; then
+        echo "Skipping additional configurations."
+        exit 0
+    else
+        echo "❌ Invalid selection. Please try again."
+    fi
+done
+
+# Ensure selected branch is available locally
+if ! yadm rev-parse --verify "$SELECTED_BRANCH" &>/dev/null; then
+    echo "🌐 Fetching branch $SELECTED_BRANCH from remote..."
+    yadm checkout -t origin/"$SELECTED_BRANCH"
+else
+    yadm checkout "$SELECTED_BRANCH"
+fi
+
+# Pull latest updates from GitHub for the correct branch
+echo "🔄 Pulling latest updates for branch: $SELECTED_BRANCH..."
+if ! yadm pull --rebase; then
+    echo "❌ Error: Failed to pull latest changes. Exiting."
+    exit 1
+fi
+echo "✅ Repository is up to date!"
+
+# Define package list path
+PACKAGE_FILE="$HOME/.config/yadm/packages.json"
+
+if [ ! -f "$PACKAGE_FILE" ]; then
+    echo "⚠️ Warning: No packages.json file found for this branch."
+else
+    echo "📦 Processing packages from $PACKAGE_FILE..."
+
+    # Install APT packages
+    jq -c ".add-packages.apt[]" "$PACKAGE_FILE" | while read -r pkg; do
+        name=$(echo "$pkg" | jq -r ".name")
+        if [[ -n "$name" ]]; then
+            echo "Installing: $name"
+            sudo apt install -y "$name"
+        fi
+    done
+
+    # Install Flatpak packages
+    jq -c ".add-packages.flatpak[]" "$PACKAGE_FILE" | while read -r pkg; do
+        name=$(echo "$pkg" | jq -r ".name")
+        remote=$(echo "$pkg" | jq -r ".remote // \"flathub\"")
+        if [[ -n "$name" ]]; then
+            echo "Installing: $name from $remote"
+            flatpak install -y "$remote" "$name"
+        fi
+    done
+
+    # Remove APT packages
+    jq -c ".remove-packages.apt[]" "$PACKAGE_FILE" | while read -r pkg; do
+        name=$(echo "$pkg" | jq -r ".name")
+        if [[ -n "$name" ]]; then
+            echo "Removing: $name"
+            sudo apt remove -y "$name"
+        fi
+    done
+fi
+
+# Ensure YADM aliases are available
+echo 'alias yadm-sync="$HOME/.local/bin/yadm-sync"' >> ~/.bashrc
+echo 'alias yadm-undo="$HOME/.local/bin/yadm-undo"' >> ~/.bashrc
+echo 'alias yadm-sync="$HOME/.local/bin/yadm-sync"' >> ~/.zshrc
+echo 'alias yadm-undo="$HOME/.local/bin/yadm-undo"' >> ~/.zshrc
+
+# Reload shell configuration
+source ~/.bashrc 2>/dev/null || source ~/.zshrc 2>/dev/null
+
+# Apply GNOME settings if `gnome` branch was selected
+if [[ "$SELECTED_BRANCH" == "gnome" ]]; then
+    echo "🖥 Installing GNOME and applying GNOME settings..."
+    if ! dpkg -l | grep -q gnome-shell; then
+        sudo apt install -y gnome-core
+    fi
+    if [ -f "$HOME/.config/dconf/user-settings.conf" ]; then
+        dconf load / < "$HOME/.config/dconf/user-settings.conf"
+    else
+        echo "⚠️ No GNOME dconf settings found. Skipping..."
+    fi
+
+    echo "🔄 Restoring GNOME extensions..."
+    while read -r extension; do
+        if gnome-extensions info "$extension" &>/dev/null; then
+            gnome-extensions enable "$extension"
+        fi
+    done < "$HOME/.config/gnome-enabled-extensions.txt"
+    echo "✅ GNOME setup complete!"
+fi
+
+echo "✅ YADM bootstrap complete!"
