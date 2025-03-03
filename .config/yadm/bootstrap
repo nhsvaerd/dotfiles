@@ -54,18 +54,17 @@ else
     echo "📦 Processing packages from $PACKAGE_FILE..."
 
     # Install APT packages
-    jq -c '."add-packages"."apt" // [] | .[] | .name' "$PACKAGE_FILE" | while read -r pkg; do
-        name=$(echo "$pkg" | jq -r ".name")
+    jq -r '."add-packages"."apt" // [] | .[] | .name' "$PACKAGE_FILE" | while read -r name; do
         if [[ -n "$name" ]]; then
             echo "Installing: $name"
             sudo apt install -y "$name"
         fi
     done
 
+
     # Install Flatpak packages
-    jq -c '."add-packages"."flatpak" // [] | .[] | .name' "$PACKAGE_FILE" | while read -r pkg; do
-        name=$(echo "$pkg" | jq -r ".name")
-        remote=$(echo "$pkg" | jq -r ".remote // \"flathub\"")
+    jq -r '."add-packages"."flatpak" // [] | .[] | .name' "$PACKAGE_FILE" | while read -r name; do
+        remote=$(jq -r --arg name "$name" '."add-packages"."flatpak"[] | select(.name == $name) | .remote // "flathub"' "$PACKAGE_FILE")
         if [[ -n "$name" ]]; then
             echo "Installing: $name from $remote"
             flatpak install -y "$remote" "$name"
@@ -73,13 +72,13 @@ else
     done
 
     # Remove APT packages
-    jq -c '."remove-packages"."apt" // [] | .[] | .name' "$PACKAGE_FILE" | while read -r pkg; do
-        name=$(echo "$pkg" | jq -r ".name")
+     jq -r '."remove-packages"."apt" // [] | .[] | .name' "$PACKAGE_FILE" | while read -r name; do
         if [[ -n "$name" ]]; then
             echo "Removing: $name"
             sudo apt remove -y "$name"
         fi
     done
+
 
 
 fi
