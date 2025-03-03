@@ -1,0 +1,13 @@
+{
+  "add-packages": {
+    "apt": [
+      { "name": "mc" },
+      { "name": "curl" },
+      { "name": "micro" },
+      { "name": "git" },
+      { "name": "htop" },
+      { "name": "flatpak" },
+      { "name": "syncthing" }
+    ]
+  }
+}
