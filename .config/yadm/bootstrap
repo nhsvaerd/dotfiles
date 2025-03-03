@@ -81,6 +81,8 @@ else
         fi
     done
 
+fi
+
 # Ensure YADM aliases are available
 echo 'alias yadm-sync="$HOME/.local/bin/yadm-sync"' >> ~/.bashrc
 echo 'alias yadm-undo="$HOME/.local/bin/yadm-undo"' >> ~/.bashrc
