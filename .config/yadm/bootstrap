@@ -54,7 +54,7 @@ else
     echo "📦 Processing packages from $PACKAGE_FILE..."
 
     # Install APT packages
-    jq -c ".add-packages.apt[]" "$PACKAGE_FILE" | while read -r pkg; do
+    jq -c ".add-packages.apt // [] | .[]" "$PACKAGE_FILE" | while read -r pkg; do
         name=$(echo "$pkg" | jq -r ".name")
         if [[ -n "$name" ]]; then
             echo "Installing: $name"
@@ -63,7 +63,7 @@ else
     done
 
     # Install Flatpak packages
-    jq -c ".add-packages.flatpak[]" "$PACKAGE_FILE" | while read -r pkg; do
+    jq -c ".add-packages.flatpak // [] | .[]" "$PACKAGE_FILE" | while read -r pkg; do
         name=$(echo "$pkg" | jq -r ".name")
         remote=$(echo "$pkg" | jq -r ".remote // \"flathub\"")
         if [[ -n "$name" ]]; then
@@ -73,14 +73,13 @@ else
     done
 
     # Remove APT packages
-    jq -c ".remove-packages.apt[]" "$PACKAGE_FILE" | while read -r pkg; do
+    jq -c ".remove-packages.apt // [] | .[]" "$PACKAGE_FILE" | while read -r pkg; do
         name=$(echo "$pkg" | jq -r ".name")
         if [[ -n "$name" ]]; then
             echo "Removing: $name"
             sudo apt remove -y "$name"
         fi
     done
-fi
 
 # Ensure YADM aliases are available
 echo 'alias yadm-sync="$HOME/.local/bin/yadm-sync"' >> ~/.bashrc
