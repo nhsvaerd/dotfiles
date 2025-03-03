@@ -10,21 +10,19 @@ if ! yadm pull --rebase; then
 fi
 echo "✅ YADM is up to date!"
 
-
-
-# Ensure yq is installed
-if ! command -v yq &> /dev/null; then
-    echo "yq not found. Installing..."
-    sudo apt install -y yq
+# Ensure jq is installed
+if ! command -v jq &> /dev/null; then
+    echo "jq not found. Installing..."
+    sudo apt update && sudo apt install -y jq
 fi
 
 # Ensure required base packages are installed
-sudo apt update && sudo apt install -y dialog git
+sudo apt install -y dialog git
 
 # Fetch list of available YADM branches (excluding `root`)
 AVAILABLE_BRANCHES=$(yadm branch -r | grep -vE "root|HEAD" | awk -F'origin/' '{print $2}')
 
-# Prompt user for branch selection
+# Prompt user to select a branch
 echo "Available setup profiles:"
 PS3="Select a branch to configure the system (default is 'root' only): "
 select SELECTED_BRANCH in $AVAILABLE_BRANCHES "Skip"; do
@@ -55,7 +53,7 @@ if [[ -n "$SELECTED_BRANCH" ]]; then
 fi
 
 # Define package list path
-PACKAGE_FILE="$HOME/.config/yadm/packages.yaml"
+PACKAGE_FILE="$HOME/.config/yadm/packages.json"
 
 if [ ! -f "$PACKAGE_FILE" ]; then
     echo "Error: Package list file not found at $PACKAGE_FILE"
@@ -65,14 +63,12 @@ fi
 # Function to install APT packages
 install_apt_packages() {
     local branch="$1"
-    echo "Installing APT packages for branch: $branch..."
-    yq ".branches.$branch.add-packages.apt[]" "$PACKAGE_FILE" | while read -r pkg; do
-        name=$(echo "$pkg" | yq ".name")
-        params=$(echo "$pkg" | yq ".parameters // empty")
-        echo "Installing: $name $params"
-        if ! sudo apt install -y $params "$name"; then
-            echo "❌ Error installing $name. Exiting..."
-            exit 1
+    echo "📦 Installing APT packages for branch: $branch..."
+    jq -c ".branches.$branch.add-packages.apt[]" "$PACKAGE_FILE" | while read -r pkg; do
+        name=$(echo "$pkg" | jq -r ".name")
+        if [[ -n "$name" ]]; then
+            echo "Installing: $name"
+            sudo apt install -y "$name"
         fi
     done
 }
@@ -80,66 +76,38 @@ install_apt_packages() {
 # Function to install Flatpak packages
 install_flatpak_packages() {
     local branch="$1"
-    echo "Installing Flatpak packages for branch: $branch..."
-    yq ".branches.$branch.add-packages.flatpak[]" "$PACKAGE_FILE" | while read -r pkg; do
-        name=$(echo "$pkg" | yq ".name")
-        remote=$(echo "$pkg" | yq ".remote // \"flathub\"")
-        echo "Installing: $name from $remote"
-        flatpak install -y "$remote" "$name"
+    echo "📦 Installing Flatpak packages for branch: $branch..."
+    jq -c ".branches.$branch.add-packages.flatpak[]" "$PACKAGE_FILE" | while read -r pkg; do
+        name=$(echo "$pkg" | jq -r ".name")
+        remote=$(echo "$pkg" | jq -r ".remote // \"flathub\"")
+        if [[ -n "$name" ]]; then
+            echo "Installing: $name from $remote"
+            flatpak install -y "$remote" "$name"
+        fi
     done
 }
 
 # Function to remove APT packages
 remove_apt_packages() {
     local branch="$1"
-    echo "Removing APT packages for branch: $branch..."
-    yq ".branches.$branch.remove-packages.apt[]" "$PACKAGE_FILE" | while read -r pkg; do
-        name=$(echo "$pkg" | yq ".name")
-        params=$(echo "$pkg" | yq ".parameters // empty")
-        echo "Removing: $name $params"
-        sudo apt remove -y $params "$name"
+    echo "🗑 Removing APT packages for branch: $branch..."
+    jq -c ".branches.$branch.remove-packages.apt[]" "$PACKAGE_FILE" | while read -r pkg; do
+        name=$(echo "$pkg" | jq -r ".name")
+        if [[ -n "$name" ]]; then
+            echo "Removing: $name"
+            sudo apt remove -y "$name"
+        fi
     done
 }
 
-# Function to remove Flatpak packages
-remove_flatpak_packages() {
-    local branch="$1"
-    echo "Removing Flatpak packages for branch: $branch..."
-    yq ".branches.$branch.remove-packages.flatpak[]" "$PACKAGE_FILE" | while read -r pkg; do
-        name=$(echo "$pkg" | yq ".name")
-        remote=$(echo "$pkg" | yq ".remote // \"flathub\"")
-        echo "Uninstalling: $name from $remote"
-        flatpak uninstall -y "$name"
-    done
-}
-
-# Remove Snap if present
-if command -v snap &> /dev/null; then
-    if snap list | grep -q "Name"; then
-        echo "Removing all Snap packages..."
-        sudo snap remove --purge $(snap list | awk 'NR>1 {print $1}')
-    fi
-
-    echo "Purging Snap..."
-    sudo apt remove --purge -y snapd
-    sudo rm -rf /var/snap /snap /var/lib/snapd
-    echo "✅ Snap removed successfully!"
-fi
-
-
-
-
-# Install packages from root + selected branch (if any)
+# Process packages for `root` first, then merge with `gnome`
 install_apt_packages "root"
 install_flatpak_packages "root"
-remove_apt_packages "root"
-remove_flatpak_packages "root"
 
 if [[ -n "$SELECTED_BRANCH" ]]; then
     install_apt_packages "$SELECTED_BRANCH"
     install_flatpak_packages "$SELECTED_BRANCH"
     remove_apt_packages "$SELECTED_BRANCH"
-    remove_flatpak_packages "$SELECTED_BRANCH"
 fi
 
 # Ensure YADM aliases are available
@@ -153,24 +121,22 @@ source ~/.bashrc 2>/dev/null || source ~/.zshrc 2>/dev/null
 
 # Apply GNOME settings if `gnome` branch was selected
 if [[ "$SELECTED_BRANCH" == "gnome" ]]; then
-    echo "Installing GNOME and applying GNOME settings..."
+    echo "🖥 Installing GNOME and applying GNOME settings..."
     if ! dpkg -l | grep -q gnome-shell; then
-        echo "Installing GNOME..."
         sudo apt install -y gnome-core
-    else
-        echo "✅ GNOME already installed. Skipping install..."
     fi
-    dconf load / < ~/.config/dconf/user-settings.conf
-    echo "✅ GNOME settings applied!"
+    if [ -f "$HOME/.config/dconf/user-settings.conf" ]; then
+        dconf load / < "$HOME/.config/dconf/user-settings.conf"
+    else
+        echo "⚠️ No GNOME dconf settings found. Skipping..."
+    fi
 
     echo "🔄 Restoring GNOME extensions..."
     while read -r extension; do
         if gnome-extensions info "$extension" &>/dev/null; then
             gnome-extensions enable "$extension"
-        else
-            echo "⚠️ Warning: Extension $extension not found."
         fi
-    done < ~/.config/gnome-enabled-extensions.txt
+    done < "$HOME/.config/gnome-enabled-extensions.txt"
     echo "✅ GNOME setup complete!"
 fi
 
