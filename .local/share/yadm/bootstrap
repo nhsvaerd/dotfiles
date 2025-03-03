@@ -2,82 +2,66 @@
 
 echo "🚀 Running YADM bootstrap script..."
 
-# Ensure yadm is up to date
-echo "🔄 Pulling latest YADM dotfiles from GitHub..."
-if ! yadm pull --rebase; then
-    echo "❌ Error: Failed to pull latest changes. Exiting to prevent outdated setup."
-    exit 1
-fi
-echo "✅ YADM is up to date!"
-
-# Ensure jq is installed
-if ! command -v jq &> /dev/null; then
-    echo "jq not found. Installing..."
-    sudo apt update && sudo apt install -y jq
-fi
-
 # Ensure required base packages are installed
-sudo apt install -y dialog git
+sudo apt update && sudo apt install -y dialog git jq
 
-# Fetch list of available YADM branches (excluding `root`)
-AVAILABLE_BRANCHES=$(yadm branch -r | grep -vE "root|HEAD" | awk -F'origin/' '{print $2}')
+# Detect current branch
+CURRENT_BRANCH=$(yadm branch --show-current)
+
+# Fetch list of available YADM branches (excluding `HEAD`)
+AVAILABLE_BRANCHES=$(yadm branch -r | grep -vE "HEAD" | awk -F'origin/' '{print $2}')
+
+# Add an option to keep the current branch
+AVAILABLE_BRANCHES="$CURRENT_BRANCH $AVAILABLE_BRANCHES Skip"
 
 # Prompt user to select a branch
 echo "Available setup profiles:"
-PS3="Select a branch to configure the system (default is 'root' only): "
-select SELECTED_BRANCH in $AVAILABLE_BRANCHES "Skip"; do
+PS3="Select a branch to configure the system (default is '$CURRENT_BRANCH'): "
+select SELECTED_BRANCH in $AVAILABLE_BRANCHES; do
     if [[ -n "$SELECTED_BRANCH" && "$SELECTED_BRANCH" != "Skip" ]]; then
         echo "✅ Selected branch: $SELECTED_BRANCH"
         break
     elif [[ "$SELECTED_BRANCH" == "Skip" ]]; then
         echo "Skipping additional configurations."
-        SELECTED_BRANCH=""
-        break
+        exit 0
     else
         echo "❌ Invalid selection. Please try again."
     fi
 done
 
 # Switch to selected branch if different from current
-if [[ -n "$SELECTED_BRANCH" ]]; then
-    CURRENT_BRANCH=$(yadm branch --show-current)
-    if [[ "$CURRENT_BRANCH" != "$SELECTED_BRANCH" ]]; then
-        echo "🔄 Switching to branch: $SELECTED_BRANCH"
-        yadm checkout "$SELECTED_BRANCH"
-        echo "🔄 Pulling latest updates from GitHub..."
-        yadm pull --rebase
-        echo "✅ Repository is up to date."
-    else
-        echo "✅ Already on the selected branch. No need to pull again."
-    fi
+if [[ "$CURRENT_BRANCH" != "$SELECTED_BRANCH" ]]; then
+    echo "🔄 Switching to branch: $SELECTED_BRANCH"
+    yadm checkout "$SELECTED_BRANCH"
 fi
+
+# Pull latest updates from GitHub for the correct branch
+echo "🔄 Pulling latest updates for branch: $SELECTED_BRANCH..."
+if ! yadm pull --rebase; then
+    echo "❌ Error: Failed to pull latest changes. Exiting."
+    exit 1
+fi
+echo "✅ Repository is up to date!"
 
 # Define package list path
 PACKAGE_FILE="$HOME/.config/yadm/packages.json"
 
 if [ ! -f "$PACKAGE_FILE" ]; then
-    echo "Error: Package list file not found at $PACKAGE_FILE"
-    exit 1
-fi
+    echo "⚠️ Warning: No packages.json file found for this branch."
+else
+    echo "📦 Processing packages from $PACKAGE_FILE..."
 
-# Function to install APT packages
-install_apt_packages() {
-    local branch="$1"
-    echo "📦 Installing APT packages for branch: $branch..."
-    jq -c ".branches.$branch.add-packages.apt[]" "$PACKAGE_FILE" | while read -r pkg; do
+    # Install APT packages
+    jq -c ".add-packages.apt[]" "$PACKAGE_FILE" | while read -r pkg; do
         name=$(echo "$pkg" | jq -r ".name")
         if [[ -n "$name" ]]; then
             echo "Installing: $name"
             sudo apt install -y "$name"
         fi
     done
-}
 
-# Function to install Flatpak packages
-install_flatpak_packages() {
-    local branch="$1"
-    echo "📦 Installing Flatpak packages for branch: $branch..."
-    jq -c ".branches.$branch.add-packages.flatpak[]" "$PACKAGE_FILE" | while read -r pkg; do
+    # Install Flatpak packages
+    jq -c ".add-packages.flatpak[]" "$PACKAGE_FILE" | while read -r pkg; do
         name=$(echo "$pkg" | jq -r ".name")
         remote=$(echo "$pkg" | jq -r ".remote // \"flathub\"")
         if [[ -n "$name" ]]; then
@@ -85,29 +69,15 @@ install_flatpak_packages() {
             flatpak install -y "$remote" "$name"
         fi
     done
-}
 
-# Function to remove APT packages
-remove_apt_packages() {
-    local branch="$1"
-    echo "🗑 Removing APT packages for branch: $branch..."
-    jq -c ".branches.$branch.remove-packages.apt[]" "$PACKAGE_FILE" | while read -r pkg; do
+    # Remove APT packages
+    jq -c ".remove-packages.apt[]" "$PACKAGE_FILE" | while read -r pkg; do
         name=$(echo "$pkg" | jq -r ".name")
         if [[ -n "$name" ]]; then
             echo "Removing: $name"
             sudo apt remove -y "$name"
         fi
     done
-}
-
-# Process packages for `root` first, then merge with `gnome`
-install_apt_packages "root"
-install_flatpak_packages "root"
-
-if [[ -n "$SELECTED_BRANCH" ]]; then
-    install_apt_packages "$SELECTED_BRANCH"
-    install_flatpak_packages "$SELECTED_BRANCH"
-    remove_apt_packages "$SELECTED_BRANCH"
 fi
 
 # Ensure YADM aliases are available
