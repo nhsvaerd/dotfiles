@@ -3,17 +3,19 @@
     "apt": [
       { "name": "mc" },
       { "name": "curl" },
+      { "name": "wget" },
       { "name": "micro" },
       { "name": "git" },
       { "name": "htop" },
       { "name": "flatpak" },
       { "name": "syncthing" },
-      { "name": "virt-manager" },
       { "name": "gnome-core" },
       { "name": "gnome-tweaks" },
       { "name": "gnome-shell-extensions" },
       { "name": "gnome-shell-extension-manager" },
-      { "name": "gnome-software-plugin-flatpak" }
+      { "name": "gnome-software-plugin-flatpak" },
+      { "name": "virt-manager" },
+      { "name": "synaptic" }
     ],
     "flatpak": [
       { "name": "app/one.ablaze.floorp/x86_64/stable", "remote": "flathub" }
