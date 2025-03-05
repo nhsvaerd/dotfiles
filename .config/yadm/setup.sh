@@ -17,6 +17,7 @@ GNOME_PACKAGES=(
     gnome-core
     gnome-shell-extensions
     gnome-shell-extension-manager
+    gnome-software-plugin-flatpak
     pipx
 )
 
