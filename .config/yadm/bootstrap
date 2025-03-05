@@ -2,18 +2,30 @@
 
 echo "Running YADM bootstrap script..."
 
-# Ask the user if they want to enable debug mode
-read -rp "Enable debug mode? (Y/N): " DEBUG_MODE
-DEBUG_LOG="$HOME/bootstrap.log"
+# Define essential packages
+ESSENTIAL_PACKAGES=(
+    jq
+    curl
+    wget
+    mc
+    micro
+    btop
+    tldr
+    rsync
+    syncthing
+)
 
-if [[ "$DEBUG_MODE" =~ ^[Yy]$ ]]; then
-    echo "📝 Debug mode enabled. Logging to $DEBUG_LOG"
-    exec > >(tee -a "$DEBUG_LOG") 2>&1
-    echo "========== $(date) ==========" >> "$DEBUG_LOG"
-fi
+# Function to install essential packages
+install_essential_packages() {
+    echo "📦 Installing essential packages..."
+    printf "%s\n" "${ESSENTIAL_PACKAGES[@]}" | xargs -P 8 -I{} sudo apt install -y {}
+
+    echo "✅ Essential packages installed!"
+}
 
 # Ensure required base packages are installed
-sudo apt update && sudo apt install -y dialog jq
+sudo apt update
+install_essential_packages
 
 # Fetch all remote branches before listing them
 yadm fetch --all
@@ -21,7 +33,7 @@ yadm fetch --all
 # Detect current branch
 CURRENT_BRANCH=$(yadm branch --show-current)
 
-# List remote branches (no local branches, no duplicates)
+# List remote branches
 AVAILABLE_BRANCHES=$(yadm ls-remote --heads | awk -F'/' '{print $3}')
 
 # Prompt user to select a branch
@@ -41,7 +53,7 @@ done
 
 # Ensure selected branch is available locally
 if ! yadm rev-parse --verify "$SELECTED_BRANCH" &>/dev/null; then
-    echo "🌐 Fetching branch $SELECTED_BRANCH from remote..."
+    echo "Fetching branch $SELECTED_BRANCH from remote..."
     yadm checkout -t origin/"$SELECTED_BRANCH"
 else
     yadm checkout "$SELECTED_BRANCH"
@@ -55,131 +67,12 @@ if ! yadm pull --rebase; then
 fi
 echo "✅ Repository is up to date!"
 
-# Define package list path
-PACKAGE_FILE="$HOME/.config/yadm/packages.json"
-
-# =========================
-# Case Statement For Branch-Specific Environment Setup
-# =========================
-case "$SELECTED_BRANCH" in
-    gnome)
-        echo "🖥 Setting up GNOME environment..."
-        sudo apt install -y gnome-core gnome-shell-extensions gnome-shell-extension-manager pipx
-
-        # Ensure pipx is set up
-        pipx ensurepath
-        export PATH=$HOME/.local/bin:$PATH  # Ensure pipx-installed CLI tools are available
-
-        # Install gnome-extensions-cli via pipx if missing
-        if ! command -v gnome-extensions-cli &>/dev/null; then
-            echo "📦 Installing gnome-extensions-cli..."
-            pipx install gnome-extensions-cli
-        fi
-
-        # Apply GNOME settings
-        if [ -f "$HOME/.config/dconf/user-settings.conf" ]; then
-            echo "🔄 Applying GNOME settings from dconf..."
-            dconf load / < "$HOME/.config/dconf/user-settings.conf"
-            echo "✅ GNOME settings applied!"
-        else
-            echo "⚠️ No GNOME dconf settings found."
-        fi
-        ;;
-    
-    kde)
-        echo "🖥 Setting up KDE environment..."
-        sudo apt install -y kde-plasma-desktop plasma-workspace kde-config-gtk-style
-
-        # Apply KDE-specific settings if any
-        if [ -f "$HOME/.config/kde-settings.conf" ]; then
-            echo "🔄 Applying KDE settings..."
-            # Example: Apply KDE settings (modify as needed)
-            kwriteconfig5 --file "$HOME/.config/kde-settings.conf"
-            echo "✅ KDE settings applied!"
-        else
-            echo "⚠️ No KDE configuration found."
-        fi
-        ;;
-    
-    *)
-        echo "⚠️ No specific environment setup found for branch: $SELECTED_BRANCH"
-        ;;
-esac
-
-# =========================
-# Install User-Defined Packages after Environment Setup
-# =========================
-
-install_apt_packages() {
-    local package_list
-    package_list=$(jq -r '."add-packages"."apt" // [] | .[].name' "$PACKAGE_FILE")
-
-    if [[ -n "$package_list" ]]; then
-        echo "📦 Installing APT packages..."
-        sudo apt install -y $package_list || {
-            echo "❌ Failed to install some APT packages."
-            return 1
-        }
-    else
-        echo "⚠️ No APT packages to install."
-    fi
-}
-
-remove_apt_packages() {
-    local remove_list
-    remove_list=$(jq -r '."remove-packages"."apt" // [] | .[].name' "$PACKAGE_FILE")
-
-    if [[ -n "$remove_list" ]]; then
-        echo "🗑 Removing APT packages..."
-        sudo apt remove -y $remove_list && sudo apt autoremove -y || {
-            echo "❌ Failed to remove some APT packages."
-            return 1
-        }
-    else
-        echo "⚠️ No APT packages to remove."
-    fi
-}
-
-install_flatpak_packages() {
-    while IFS= read -r name; do
-        remote=$(jq -r --arg name "$name" '."add-packages"."flatpak"[] | select(.name == $name) | .remote // "flathub"' "$PACKAGE_FILE")
-        if [[ -n "$name" ]]; then
-            echo "📦 Installing Flatpak: $name from $remote"
-            flatpak install -y "$remote" "$name" || {
-                echo "❌ Failed to install Flatpak package: $name"
-                return 1
-            }
-        fi
-    done < <(jq -r '."add-packages"."flatpak" // [] | .[].name' "$PACKAGE_FILE")
-}
-
-remove_flatpak_packages() {
-    while IFS= read -r name; do
-        if [[ -n "$name" ]]; then
-            echo "🗑 Removing Flatpak: $name"
-            flatpak uninstall -y "$name" || {
-                echo "❌ Failed to remove Flatpak package: $name"
-                return 1
-            }
-        fi
-    done < <(jq -r '."remove-packages"."flatpak" // [] | .[].name' "$PACKAGE_FILE")
-}
-
-# Ensure Flatpak is installed before processing Flatpak packages
-if jq -r '."add-packages"."apt" // [] | .[].name' "$PACKAGE_FILE" | grep -q "^flatpak$"; then
-    echo "📦 Ensuring Flatpak is installed before processing Flatpak packages..."
-    sudo apt install -y flatpak
-fi
-
-# Install user-defined packages
-if [ -f "$PACKAGE_FILE" ]; then
-    install_apt_packages
-    install_flatpak_packages
-    remove_apt_packages
-    remove_flatpak_packages
+# Check if branch-specific script exists, then execute
+if [[ -x "setup.sh" ]]; then
+    echo "🔄 Running branch-specific setup..."
+    bash "setup.sh"
 else
-    echo "⚠️ No packages.json file found for this branch."
+    echo "⚠️ No branch-specific setup script found. Skipping."
 fi
 
 echo "✅ YADM bootstrap complete!"
-echo "ℹ️ Please run 'exec $SHELL' or restart your terminal to apply changes."
