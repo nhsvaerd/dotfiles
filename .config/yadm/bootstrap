@@ -53,7 +53,7 @@ done
 
 # Ensure selected branch is available locally
 if ! yadm rev-parse --verify "$SELECTED_BRANCH" &>/dev/null; then
-    echo "Fetching branch $SELECTED_BRANCH from remote..."
+    echo "🌐 Fetching branch $SELECTED_BRANCH from remote..."
     yadm checkout -t origin/"$SELECTED_BRANCH"
 else
     yadm checkout "$SELECTED_BRANCH"
@@ -67,12 +67,19 @@ if ! yadm pull --rebase; then
 fi
 echo "✅ Repository is up to date!"
 
-# Check if branch-specific script exists, then execute
-if [[ -x "setup.sh" ]]; then
-    echo "🔄 Running branch-specific setup..."
-    bash "setup.sh"
+# Check if branch-specific script exists, make it executable, and run it
+BRANCH_SETUP_SCRIPT="$HOME/.config/yadm/setup.sh"
+
+if [[ -f "$BRANCH_SETUP_SCRIPT" ]]; then
+    echo "🔄 Found branch-specific setup script at $BRANCH_SETUP_SCRIPT"
+
+    # Make sure setup.sh is executable
+    chmod +x "$BRANCH_SETUP_SCRIPT"
+
+    echo "Running branch-specific setup..."
+    bash "$BRANCH_SETUP_SCRIPT"
 else
-    echo "⚠️ No branch-specific setup script found. Skipping."
+    echo "⚠️ No branch-specific setup script found in $BRANCH_SETUP_SCRIPT. Skipping."
 fi
 
 echo "✅ YADM bootstrap complete!"
