@@ -1,25 +1,19 @@
 {
   "add-packages": {
     "apt": [
-      { "name": "mc" },
-      { "name": "curl" },
-      { "name": "wget" },
-      { "name": "micro" },
-      { "name": "git" },
-      { "name": "htop" },
-      { "name": "flatpak" },
-      { "name": "syncthing" },
-      { "name": "gnome-core" },
-      { "name": "gnome-tweaks" },
-      { "name": "gnome-shell-extensions" },
-      { "name": "gnome-shell-extension-manager" },
-      { "name": "gnome-software-plugin-flatpak" },
       { "name": "virt-manager" },
-      { "name": "synaptic" }
+      { "name": "synaptic" },
+      { "name": "mousetweaks" },
+      { "name": "gparted" },
+      { "name": "baobab" },
+      { "name": "zenmap" },
+      { "name": "network-manager-gnome" },
+      { "name": "dconf-editor" }
     ],
     "flatpak": [
       { "name": "app/one.ablaze.floorp/x86_64/stable", "remote": "flathub" },
       { "name": "app/md.obsidian.Obsidian/x86_64/stable", "remote": "flathub" }
+      { "name": "org.kde.dolphin", "remote": "flathub" }
     ]
   },
   "remove-packages": {
