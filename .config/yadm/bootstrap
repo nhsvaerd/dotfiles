@@ -1,6 +1,16 @@
 #!/bin/bash
 
-echo "🚀 Running YADM bootstrap script..."
+echo "Running YADM bootstrap script..."
+
+# Ask the user if they want to enable debug mode
+read -rp "Enable debug mode? (Y/N): " DEBUG_MODE
+DEBUG_LOG="$HOME/bootstrap.log"
+
+if [[ "$DEBUG_MODE" =~ ^[Yy]$ ]]; then
+    echo "📝 Debug mode enabled. Logging to $DEBUG_LOG"
+    exec > >(tee -a "$DEBUG_LOG") 2>&1
+    echo "========== $(date) ==========" >> "$DEBUG_LOG"
+fi
 
 # Ensure required base packages are installed
 sudo apt update && sudo apt install -y dialog jq
@@ -47,6 +57,58 @@ echo "✅ Repository is up to date!"
 
 # Define package list path
 PACKAGE_FILE="$HOME/.config/yadm/packages.json"
+
+# =========================
+# Case Statement For Branch-Specific Environment Setup
+# =========================
+case "$SELECTED_BRANCH" in
+    gnome)
+        echo "🖥 Setting up GNOME environment..."
+        sudo apt install -y gnome-core gnome-shell-extensions gnome-shell-extension-manager pipx
+
+        # Ensure pipx is set up
+        pipx ensurepath
+        export PATH=$HOME/.local/bin:$PATH  # Ensure pipx-installed CLI tools are available
+
+        # Install gnome-extensions-cli via pipx if missing
+        if ! command -v gnome-extensions-cli &>/dev/null; then
+            echo "📦 Installing gnome-extensions-cli..."
+            pipx install gnome-extensions-cli
+        fi
+
+        # Apply GNOME settings
+        if [ -f "$HOME/.config/dconf/user-settings.conf" ]; then
+            echo "🔄 Applying GNOME settings from dconf..."
+            dconf load / < "$HOME/.config/dconf/user-settings.conf"
+            echo "✅ GNOME settings applied!"
+        else
+            echo "⚠️ No GNOME dconf settings found."
+        fi
+        ;;
+    
+    kde)
+        echo "🖥 Setting up KDE environment..."
+        sudo apt install -y kde-plasma-desktop plasma-workspace kde-config-gtk-style
+
+        # Apply KDE-specific settings if any
+        if [ -f "$HOME/.config/kde-settings.conf" ]; then
+            echo "🔄 Applying KDE settings..."
+            # Example: Apply KDE settings (modify as needed)
+            kwriteconfig5 --file "$HOME/.config/kde-settings.conf"
+            echo "✅ KDE settings applied!"
+        else
+            echo "⚠️ No KDE configuration found."
+        fi
+        ;;
+    
+    *)
+        echo "⚠️ No specific environment setup found for branch: $SELECTED_BRANCH"
+        ;;
+esac
+
+# =========================
+# Install User-Defined Packages after Environment Setup
+# =========================
 
 install_apt_packages() {
     local package_list
@@ -103,7 +165,13 @@ remove_flatpak_packages() {
     done < <(jq -r '."remove-packages"."flatpak" // [] | .[].name' "$PACKAGE_FILE")
 }
 
-# Check if the package file exists before processing
+# Ensure Flatpak is installed before processing Flatpak packages
+if jq -r '."add-packages"."apt" // [] | .[].name' "$PACKAGE_FILE" | grep -q "^flatpak$"; then
+    echo "📦 Ensuring Flatpak is installed before processing Flatpak packages..."
+    sudo apt install -y flatpak
+fi
+
+# Install user-defined packages
 if [ -f "$PACKAGE_FILE" ]; then
     install_apt_packages
     install_flatpak_packages
@@ -111,72 +179,6 @@ if [ -f "$PACKAGE_FILE" ]; then
     remove_flatpak_packages
 else
     echo "⚠️ No packages.json file found for this branch."
-fi
-
-# Ensure YADM aliases are available
-for shell_rc in ~/.bashrc ~/.zshrc; do
-    grep -qxF 'alias yadm-sync="$HOME/.local/bin/yadm-sync"' "$shell_rc" || echo 'alias yadm-sync="$HOME/.local/bin/yadm-sync"' >> "$shell_rc"
-    grep -qxF 'alias yadm-undo="$HOME/.local/bin/yadm-undo"' "$shell_rc" || echo 'alias yadm-undo="$HOME/.local/bin/yadm-undo"' >> "$shell_rc"
-done
-
-# Process GNOME extensions if `gnome` branch was selected
-if [[ "$SELECTED_BRANCH" == "gnome" ]]; then
-    echo "🖥 Installing GNOME and applying GNOME settings..."
-    
-    # Ensure GNOME and dependencies are installed
-    sudo apt install -y gnome-core gnome-shell-extensions gnome-shell-extension-manager pipx
-
-    # Ensure pipx is set up
-    pipx ensurepath
-    export PATH=$HOME/.local/bin:$PATH  # Ensure pipx-installed CLI tools are available
-
-    # Install gnome-extensions-cli via pipx if missing
-    if ! command -v gnome-extensions-cli &>/dev/null; then
-        echo "📦 Installing gnome-extensions-cli..."
-        pipx install gnome-extensions-cli
-    fi
-
-    echo "🔄 Syncing GNOME extensions with repo list..."
-    EXTENSIONS_DIR="$HOME/.local/share/gnome-shell/extensions"
-    mkdir -p "$EXTENSIONS_DIR"
-
-    # Remove user-installed extensions and disable system ones not in the list
-    while IFS= read -r installed_extension; do
-        if ! grep -Fxq "$installed_extension" ~/.config/gnome-enabled-extensions.txt; then
-            echo "❌ Removing unlisted extension: $installed_extension"
-            gnome-extensions disable "$installed_extension"
-            gnome-extensions uninstall "$installed_extension"
-        fi
-    done < <(gnome-extensions list)
-
-    # Install and enable missing extensions
-    while IFS= read -r extension; do
-        if gnome-extensions info "$extension" &>/dev/null; then
-            echo "✅ Already installed: $extension"
-            gnome-extensions enable "$extension"
-        else
-            echo "⚠️ Installing missing extension: $extension"
-            if gnome-extensions-cli install "$extension"; then
-                echo "✅ Installed: $extension"
-                gnome-extensions enable "$extension"
-            else
-                echo "❌ Error installing $extension."
-            fi
-        fi
-    done < ~/.config/gnome-enabled-extensions.txt
-
-    # Apply GNOME settings from dconf
-    if [ -f "$HOME/.config/dconf/user-settings.conf" ]; then
-        echo "🔄 Applying GNOME settings from dconf..."
-        dconf load / < "$HOME/.config/dconf/user-settings.conf"
-        echo "✅ GNOME settings applied!"
-    else
-        echo "⚠️ No GNOME dconf settings found."
-    fi
-
-    # Restart GNOME Shell
-    echo "🔄 Restarting GNOME Shell..."
-    gnome-shell --replace & disown
 fi
 
 echo "✅ YADM bootstrap complete!"
