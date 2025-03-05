@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Running GNOME Setup Script..."
+echo "🚀 Running GNOME Setup Script..."
 
 # Prompt for debug mode
 read -rp "Enable debug mode? (Y/N): " DEBUG_MODE
@@ -17,37 +17,37 @@ GNOME_PACKAGES=(
     gnome-core
     gnome-shell-extensions
     gnome-shell-extension-manager
-    gnome-software-plugin-flatpak
     pipx
 )
 
-# 🚀 Fetch all GNOME packages in parallel
-echo "📦 Fetching GNOME packages..."
-printf "%s\n" "${GNOME_PACKAGES[@]}" | xargs -P 8 -I{} sudo apt-get install -y --download-only {}
+# 🚀 Install GNOME packages (SEQUENTIALLY to prevent dpkg lock issues)
+echo "📦 Installing GNOME packages..."
+for package in "${GNOME_PACKAGES[@]}"; do
+    sudo apt install -y "$package"
+done
+echo "✅ GNOME installation completed!"
 
-# 🚀 Install GNOME packages in parallel
-echo "🚀 Installing GNOME packages..."
-printf "%s\n" "${GNOME_PACKAGES[@]}" | xargs -P 8 -I{} sudo apt install -y {}
+# Install gnome-extensions-cli via pipx
+echo "📦 Installing gnome-extensions-cli..."
+pipx install gnome-extensions-cli
 
-# Ensure pipx is set up
-pipx ensurepath
-export PATH=$HOME/.local/bin:$PATH  # Ensure pipx-installed CLI tools are available
-
-# Install gnome-extensions-cli via pipx if missing
-if ! command -v gnome-extensions-cli &>/dev/null; then
-    echo "📦 Installing gnome-extensions-cli..."
-    pipx install gnome-extensions-cli
+# Validate JSON format before proceeding with package installation
+PACKAGE_FILE="$HOME/.config/yadm/packages.json"
+if ! jq . "$PACKAGE_FILE" >/dev/null 2>&1; then
+    echo "❌ Error: Invalid JSON format in packages.json"
+    exit 1
 fi
 
 # Function to install APT packages from `packages.json`
 install_apt_packages() {
     local package_list
-    package_list=$(jq -r '."add-packages"."apt" // [] | .[].name' "$HOME/.config/yadm/packages.json")
+    package_list=$(jq -r '."add-packages"."apt" // [] | .[].name' "$PACKAGE_FILE")
 
     if [[ -n "$package_list" ]]; then
-        echo "🚀 Installing additional APT packages..."
-        printf "%s\n" "$package_list" | xargs -P 8 -I{} sudo apt install -y {}
-
+        echo "📦 Installing additional APT packages..."
+        for pkg in $package_list; do
+            sudo apt install -y "$pkg"
+        done
         echo "✅ APT installation completed!"
     else
         echo "⚠️ No additional APT packages to install."
@@ -57,24 +57,17 @@ install_apt_packages() {
 # Function to install Flatpak packages from `packages.json`
 install_flatpak_packages() {
     while IFS= read -r name; do
-        remote=$(jq -r --arg name "$name" '."add-packages"."flatpak"[] | select(.name == $name) | .remote // "flathub"' "$HOME/.config/yadm/packages.json")
+        remote=$(jq -r --arg name "$name" '."add-packages"."flatpak"[] | select(.name == $name) | .remote // "flathub"' "$PACKAGE_FILE")
         if [[ -n "$name" ]]; then
             echo "📦 Installing Flatpak: $name from $remote"
-            flatpak install -y "$remote" "$name" || {
-                echo "❌ Failed to install Flatpak package: $name"
-                return 1
-            }
+            flatpak install -y "$remote" "$name"
         fi
-    done < <(jq -r '."add-packages"."flatpak" // [] | .[].name' "$HOME/.config/yadm/packages.json")
+    done < <(jq -r '."add-packages"."flatpak" // [] | .[].name' "$PACKAGE_FILE")
 }
 
 # Process user-defined package list
-if [ -f "$HOME/.config/yadm/packages.json" ]; then
-    install_apt_packages
-    install_flatpak_packages
-else
-    echo "⚠️ No packages.json file found for this branch."
-fi
+install_apt_packages
+install_flatpak_packages
 
 # Apply GNOME settings from dconf
 if [ -f "$HOME/.config/dconf/user-settings.conf" ]; then
@@ -91,5 +84,5 @@ if [[ "$REBOOT_NOW" =~ ^[Yy]$ ]]; then
     echo "🔄 Rebooting..."
     sudo reboot
 else
-    echo "✅ GNOME setup completed! Reboot to apply all changes"
+    echo "✅ GNOME setup completed! Please reboot manually."
 fi
