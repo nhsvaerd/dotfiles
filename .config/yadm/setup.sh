@@ -15,6 +15,7 @@ fi
 # Define GNOME package list
 GNOME_PACKAGES=(
     gnome-core
+    gnome-tweaks
     gnome-shell-extensions
     gnome-shell-extension-manager
     pipx
