@@ -4,7 +4,6 @@ echo "Running YADM bootstrap script..."
 
 # Define essential packages
 ESSENTIAL_PACKAGES=(
-    jq
     curl
     wget
     mc
@@ -15,25 +14,21 @@ ESSENTIAL_PACKAGES=(
     syncthing
 )
 
-# Function to install essential packages
-install_essential_packages() {
-    echo "📦 Installing essential packages..."
-    printf "%s\n" "${ESSENTIAL_PACKAGES[@]}" | xargs -P 8 -I{} sudo apt install -y {}
-
-    echo "✅ Essential packages installed!"
-}
-
-# Ensure required base packages are installed
+# Install essential APT packages
+echo "📦 Installing essential packages..."
 sudo apt update
-install_essential_packages
+for pkg in "${ESSENTIAL_PACKAGES[@]}"; do
+    echo "Installing: $pkg"
+    sudo apt install -y "$pkg"
+done
 
-# Fetch all remote branches before listing them
+# Fetch all remote branches
 yadm fetch --all
 
 # Detect current branch
 CURRENT_BRANCH=$(yadm branch --show-current)
 
-# List remote branches
+# List remote branches (remote only, excluding HEAD)
 AVAILABLE_BRANCHES=$(yadm ls-remote --heads | awk -F'/' '{print $3}')
 
 # Prompt user to select a branch
@@ -51,35 +46,35 @@ select SELECTED_BRANCH in $AVAILABLE_BRANCHES "Skip"; do
     fi
 done
 
-# Ensure selected branch is available locally
-if ! yadm rev-parse --verify "$SELECTED_BRANCH" &>/dev/null; then
-    echo "🌐 Fetching branch $SELECTED_BRANCH from remote..."
-    yadm checkout -t origin/"$SELECTED_BRANCH"
-else
-    yadm checkout "$SELECTED_BRANCH"
-fi
+# Checkout the selected branch if different from the current one
+if [[ "$SELECTED_BRANCH" != "$CURRENT_BRANCH" ]]; then
+    echo "🌐 Switching to branch: $SELECTED_BRANCH..."
+    if ! yadm rev-parse --verify "$SELECTED_BRANCH" &>/dev/null; then
+        yadm checkout -t origin/"$SELECTED_BRANCH"
+    else
+        yadm checkout "$SELECTED_BRANCH"
+    fi
 
-# Pull latest updates from GitHub for the correct branch
-echo "🔄 Pulling latest updates for branch: $SELECTED_BRANCH..."
-if ! yadm pull --rebase; then
-    echo "❌ Error: Failed to pull latest changes. Exiting."
-    exit 1
+    echo "🔄 Pulling latest updates..."
+    if ! yadm pull --rebase; then
+        echo "❌ Error: Failed to pull latest changes. Exiting."
+        exit 1
+    fi
 fi
 echo "✅ Repository is up to date!"
 
-# Check if branch-specific script exists, make it executable, and run it
-BRANCH_SETUP_SCRIPT="$HOME/.config/yadm/setup.sh"
-
-if [[ -f "$BRANCH_SETUP_SCRIPT" ]]; then
-    echo "🔄 Found branch-specific setup script at $BRANCH_SETUP_SCRIPT"
-
-    # Make sure setup.sh is executable
-    chmod +x "$BRANCH_SETUP_SCRIPT"
-
-    echo "Running branch-specific setup..."
-    bash "$BRANCH_SETUP_SCRIPT"
-else
-    echo "⚠️ No branch-specific setup script found in $BRANCH_SETUP_SCRIPT. Skipping."
+# Ensure setup script exists
+SETUP_SCRIPT="$HOME/.config/yadm/setup.sh"
+if [[ ! -f "$SETUP_SCRIPT" ]]; then
+    echo "⚠️ No setup script found at $SETUP_SCRIPT. Skipping further setup."
+    exit 0
 fi
 
-echo "✅ YADM bootstrap complete!"
+# Make setup script executable if needed
+chmod +x "$SETUP_SCRIPT"
+
+# Run setup script
+echo "🔧 Running environment setup..."
+exec "$SETUP_SCRIPT"
+
+echo "✅ Bootstrap complete"
