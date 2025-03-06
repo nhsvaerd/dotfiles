@@ -10,6 +10,7 @@ ESSENTIAL_PACKAGES=(
     micro
     btop
     tldr
+    apt-fast
     rsync
     syncthing
 )
