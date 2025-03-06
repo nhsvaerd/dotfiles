@@ -3,34 +3,24 @@
 echo "Running GNOME Setup Script..."
 
 # -----------------------------------
-# 📝 USER PACKAGE LISTS
+# 📝 DEFINE USER PACKAGE LISTS
 # -----------------------------------
 INSTALL_APT_PACKAGES=(
-    "synaptic"
-    "mousetweaks"
-    "gparted"
-    "baobab"
-    "network-manager-gnome"
-    "dconf-editor"
+    "htop"
+    "vim"
+    "curl"
+    "neofetch"
 )
 
 REMOVE_APT_PACKAGES=(
     "nano"
     "thunderbird"
-    "transmission-gtk"
-    "gnome-remote-desktop"
-    "gnome-games"
-    "gnome-weather"
-    "evolution"
-    "simple-scan"
 )
 
 INSTALL_FLATPAKS=(
     "com.github.tchx84.Flatseal"
-    "one.ablaze.floorp"
-    "org.kde.dolphin"
+    "org.libreoffice.LibreOffice"
 )
-
 
 # -----------------------------------
 # 📝 PROMPT FOR DEBUG MODE
@@ -41,28 +31,36 @@ DEBUG_MODE=false
 read -rp "Enable debug mode? (Y/N): " DEBUG_INPUT
 if [[ "$DEBUG_INPUT" =~ ^[Yy]$ ]]; then
     DEBUG_MODE=true
-    echo "📝 Debug mode enabled. Logging to $DEBUG_LOG"
-    exec 3>&1 1>>"$DEBUG_LOG" 2>&1
+    echo "📝 Debug mode enabled. Logging errors to $DEBUG_LOG"
     echo "========== $(date) ==========" >> "$DEBUG_LOG"
 fi
+
+# Function to log errors only if debug mode is enabled
+log_error() {
+    if [[ $DEBUG_MODE == true ]]; then
+        echo "❌ $1" | tee -a "$DEBUG_LOG" >&2
+    else
+        echo "❌ $1" >&2
+    fi
+}
 
 # -----------------------------------
 # 📦 INSTALL CORE GNOME PACKAGES
 # -----------------------------------
 echo "📦 Installing core GNOME packages..."
 sudo apt-get update
-if sudo apt-get install -y gnome-core gnome-tweaks gnome-shell-extensions gnome-shell-extension-manager pipx; then
-    echo "✅ GNOME packages installed!"
-else
-    [[ $DEBUG_MODE == true ]] && echo "❌ Failed to install GNOME packages." >&3
+if ! sudo apt-get install -y gnome-core gnome-tweaks gnome-shell-extensions gnome-shell-extension-manager pipx; then
+    log_error "Failed to install GNOME packages."
 fi
 
 # -----------------------------------
-# 🛠 INSTALL GNOME-EXTENSIONS-CLI
+# 🛠 INSTALL GNOME-EXTENSIONS-CLI (Verify Installation)
 # -----------------------------------
 echo "📦 Installing gnome-extensions-cli..."
-if ! pipx install gnome-extensions-cli; then
-    [[ $DEBUG_MODE == true ]] && echo "❌ Failed to install gnome-extensions-cli." >&3
+if ! command -v gnome-extensions-cli &>/dev/null; then
+    if ! pipx install gnome-extensions-cli; then
+        log_error "Failed to install gnome-extensions-cli."
+    fi
 fi
 
 # -----------------------------------
@@ -75,7 +73,7 @@ if [[ -f "$EXTENSIONS_LIST" ]]; then
         [[ -z "$EXTENSION" || "$EXTENSION" == "#"* ]] && continue  # Skip empty lines and comments
         echo "📦 Installing extension: $EXTENSION"
         if ! gnome-extensions-cli install "$EXTENSION"; then
-            [[ $DEBUG_MODE == true ]] && echo "❌ Error installing: $EXTENSION" >&3
+            log_error "Error installing GNOME extension: $EXTENSION"
         fi
     done < "$EXTENSIONS_LIST"
     echo "✅ GNOME extensions setup complete!"
@@ -96,35 +94,45 @@ else
 fi
 
 # -----------------------------------
+# 🔧 ENSURE FLATHUB IS CONFIGURED BEFORE INSTALLING FLATPAKS
+# -----------------------------------
+if ! flatpak remote-list | grep -q "flathub"; then
+    echo "📦 Adding Flathub remote..."
+    if ! flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo; then
+        log_error "Failed to add Flathub remote."
+    fi
+fi
+
+# -----------------------------------
 # 🔧 PACKAGE MANAGEMENT FUNCTIONS
 # -----------------------------------
 install_apt_package() {
     local package="$1"
     echo "📦 Installing: $package"
-    if sudo apt-get install -y "$package" >/dev/null 2>&1; then
-        echo "✅ Installed: $package"
+    if ! sudo apt-get install -y "$package"; then
+        log_error "Error installing: $package"
     else
-        [[ $DEBUG_MODE == true ]] && echo "❌ Error installing: $package" >&3
+        echo "✅ Installed: $package"
     fi
 }
 
 remove_apt_package() {
     local package="$1"
     echo "🗑 Removing: $package"
-    if sudo apt-get remove --purge -y "$package" >/dev/null 2>&1; then
-        echo "✅ Removed: $package"
+    if ! sudo apt-get remove --purge -y "$package"; then
+        log_error "Error removing: $package"
     else
-        [[ $DEBUG_MODE == true ]] && echo "❌ Error removing: $package" >&3
+        echo "✅ Removed: $package"
     fi
 }
 
 install_flatpak_package() {
     local package="$1"
     echo "📦 Installing Flatpak: $package"
-    if flatpak install -y flathub "$package" >/dev/null 2>&1; then
-        echo "✅ Installed: $package"
+    if ! flatpak install -y flathub "$package"; then
+        log_error "Error installing Flatpak package: $package"
     else
-        [[ $DEBUG_MODE == true ]] && echo "❌ Error installing: $package" >&3
+        echo "✅ Installed: $package"
     fi
 }
 
@@ -154,5 +162,5 @@ if [[ "$REBOOT_NOW" =~ ^[Yy]$ ]]; then
     echo "🔄 Rebooting..."
     sudo reboot
 else
-    echo "✅ GNOME setup completed! Please reboot manually."
+    echo "✅ GNOME setup complete. Please reboot manually."
 fi
