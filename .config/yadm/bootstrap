@@ -6,11 +6,11 @@ echo "Running YADM bootstrap script..."
 ESSENTIAL_PACKAGES=(
     curl
     wget
+    links
     mc
     micro
     btop
     tldr
-    apt-fast
     rsync
     syncthing
 )
