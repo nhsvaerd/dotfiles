@@ -1,0 +1,4 @@
+com.github.tchx84.Flatseal
+one.ablaze.floorp
+org.kde.dolphin
+com.bitwarden.desktop
