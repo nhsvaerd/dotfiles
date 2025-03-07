@@ -1,0 +1,8 @@
+nano
+thunderbird
+transmission-gtk
+gnome-remote-desktop
+gnome-games
+gnome-weather
+evolution
+simple-scan
