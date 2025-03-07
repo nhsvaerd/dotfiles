@@ -1,0 +1,6 @@
+synaptic
+mousetweaks
+gparted
+baobab
+network-manager-gnome
+dconf-editor
