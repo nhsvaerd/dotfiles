@@ -6,20 +6,30 @@ echo "Running GNOME Setup Script..."
 # 📝 DEFINE USER PACKAGE LISTS
 # -----------------------------------
 INSTALL_APT_PACKAGES=(
-    "htop"
-    "vim"
-    "curl"
-    "neofetch"
+    "synaptic"
+    "mousetweaks"
+    "gparted"
+    "baobab"
+    "network-manager-gnome"
+    "dconf-editor"
 )
 
 REMOVE_APT_PACKAGES=(
     "nano"
     "thunderbird"
+    "transmission-gtk"
+    "gnome-remote-desktop"
+    "gnome-games"
+    "gnome-weather"
+    "evolution"
+    "simple-scan"
 )
 
 INSTALL_FLATPAKS=(
     "com.github.tchx84.Flatseal"
-    "org.libreoffice.LibreOffice"
+    "one.ablaze.floorp"
+    "org.kde.dolphin"
+    "com.bitwarden.desktop"
 )
 
 # -----------------------------------
