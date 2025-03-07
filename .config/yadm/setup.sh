@@ -1,176 +1,75 @@
 #!/bin/bash
 
-echo "Running GNOME Setup Script..."
+echo "🚀 Running GNOME Setup Script..."
 
 # -----------------------------------
-# 📝 DEFINE USER PACKAGE LISTS
+# 📝 REQUIRE ROOT PERMISSIONS
 # -----------------------------------
-INSTALL_APT_PACKAGES=(
-    "synaptic"
-    "mousetweaks"
-    "gparted"
-    "baobab"
-    "network-manager-gnome"
-    "dconf-editor"
-)
-
-REMOVE_APT_PACKAGES=(
-    "nano"
-    "thunderbird"
-    "transmission-gtk"
-    "gnome-remote-desktop"
-    "gnome-games"
-    "gnome-weather"
-    "evolution"
-    "simple-scan"
-)
-
-INSTALL_FLATPAKS=(
-    "com.github.tchx84.Flatseal"
-    "one.ablaze.floorp"
-    "org.kde.dolphin"
-    "com.bitwarden.desktop"
-)
-
-# -----------------------------------
-# 📝 PROMPT FOR DEBUG MODE
-# -----------------------------------
-DEBUG_LOG="$HOME/setup-gnome.log"
-DEBUG_MODE=false
-
-read -rp "Enable debug mode? (Y/N): " DEBUG_INPUT
-if [[ "$DEBUG_INPUT" =~ ^[Yy]$ ]]; then
-    DEBUG_MODE=true
-    echo "📝 Debug mode enabled. Logging errors to $DEBUG_LOG"
-    echo "========== $(date) ==========" >> "$DEBUG_LOG"
+if [[ "$(id -u)" -ne 0 ]]; then
+    echo "❌ This script must be run as root. Use: sudo $0"
+    exit 1
 fi
-
-# Function to log errors only if debug mode is enabled
-log_error() {
-    if [[ $DEBUG_MODE == true ]]; then
-        echo "❌ $1" | tee -a "$DEBUG_LOG" >&2
-    else
-        echo "❌ $1" >&2
-    fi
-}
 
 # -----------------------------------
 # 📦 INSTALL CORE GNOME PACKAGES
 # -----------------------------------
-echo "📦 Installing core GNOME packages..."
-sudo apt-get update
-if ! sudo apt-get install -y gnome-core gnome-tweaks gnome-shell-extensions gnome-shell-extension-manager pipx; then
-    log_error "Failed to install GNOME packages."
+echo "📦 Installing GNOME and essential packages..."
+apt-get update
+apt-get install -y gnome-core gnome-tweaks gnome-shell-extensions gnome-shell-extension-manager pipx
+
+# -----------------------------------
+# 📦 PROCESS APT PACKAGE LISTS
+# -----------------------------------
+APT_INSTALL_LIST="$HOME/.config/yadm/apt-install.txt"
+APT_REMOVE_LIST="$HOME/.config/yadm/apt-remove.txt"
+
+if [[ -f "$APT_INSTALL_LIST" ]]; then
+    echo "📦 Installing additional APT packages..."
+    grep -v '^#' "$APT_INSTALL_LIST" | while read -r package; do
+        [[ -z "$package" ]] && continue
+        apt-get install -y "$package"
+    done
+fi
+
+if [[ -f "$APT_REMOVE_LIST" ]]; then
+    echo "🗑 Removing APT packages..."
+    grep -v '^#' "$APT_REMOVE_LIST" | while read -r package; do
+        [[ -z "$package" ]] && continue
+        apt-get remove --purge -y "$package"
+    done
 fi
 
 # -----------------------------------
-# 🛠 INSTALL GNOME-EXTENSIONS-CLI (Verify Installation)
+# 🛠 INSTALL GNOME-EXTENSIONS-CLI
 # -----------------------------------
 echo "📦 Installing gnome-extensions-cli..."
-if ! command -v gnome-extensions-cli &>/dev/null; then
-    if ! pipx install gnome-extensions-cli; then
-        log_error "Failed to install gnome-extensions-cli."
-    fi
-fi
+pipx install gnome-extensions-cli
 
 # -----------------------------------
-# 🧩 INSTALL GNOME EXTENSIONS FROM LIST
+# 🔄 SETUP AUTOSTART SCRIPT FOR POST-LOGIN CONFIGURATION
 # -----------------------------------
-EXTENSIONS_LIST="$HOME/.config/yadm/gnome-enabled-extensions.txt"
-if [[ -f "$EXTENSIONS_LIST" ]]; then
-    echo "🔄 Installing GNOME extensions..."
-    while read -r EXTENSION; do
-        [[ -z "$EXTENSION" || "$EXTENSION" == "#"* ]] && continue  # Skip empty lines and comments
-        echo "📦 Installing extension: $EXTENSION"
-        if ! gnome-extensions-cli install "$EXTENSION"; then
-            log_error "Error installing GNOME extension: $EXTENSION"
-        fi
-    done < "$EXTENSIONS_LIST"
-    echo "✅ GNOME extensions setup complete!"
-else
-    echo "⚠️ No GNOME extensions list found at $EXTENSIONS_LIST. Skipping..."
-fi
+AUTOSTART_DIR="$HOME/.config/autostart"
+POST_LOGIN_SCRIPT="$HOME/.config/yadm/post-login.sh"
 
-# -----------------------------------
-# 🎨 APPLY GNOME SETTINGS FROM DCONF
-# -----------------------------------
-DCONF_SETTINGS="$HOME/.config/dconf/user-settings.conf"
-if [[ -f "$DCONF_SETTINGS" ]]; then
-    echo "🔄 Applying GNOME settings from dconf..."
-    dconf load / < "$DCONF_SETTINGS"
-    echo "✅ GNOME settings applied!"
-else
-    echo "⚠️ No GNOME dconf settings found."
-fi
+mkdir -p "$AUTOSTART_DIR"
 
-# -----------------------------------
-# 🔧 ENSURE FLATHUB IS CONFIGURED BEFORE INSTALLING FLATPAKS
-# -----------------------------------
-if ! flatpak remote-list | grep -q "flathub"; then
-    echo "📦 Adding Flathub remote..."
-    if ! flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo; then
-        log_error "Failed to add Flathub remote."
-    fi
-fi
+# Create autostart .desktop file
+cat <<EOF > "$AUTOSTART_DIR/post-login.desktop"
+[Desktop Entry]
+Type=Application
+Exec=$POST_LOGIN_SCRIPT
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+Name=Post-Login Setup
+Comment=Finishing GNOME setup after user login
+EOF
 
-# -----------------------------------
-# 🔧 PACKAGE MANAGEMENT FUNCTIONS
-# -----------------------------------
-install_apt_package() {
-    local package="$1"
-    echo "📦 Installing: $package"
-    if ! sudo apt-get install -y "$package"; then
-        log_error "Error installing: $package"
-    else
-        echo "✅ Installed: $package"
-    fi
-}
+# Ensure post-login script exists
+cat <<'EOF' > "$POST_LOGIN_SCRIPT"
+#!/bin/bash
+"$HOME/.config/yadm/post-login.sh"
+EOF
+chmod +x "$POST_LOGIN_SCRIPT"
 
-remove_apt_package() {
-    local package="$1"
-    echo "🗑 Removing: $package"
-    if ! sudo apt-get remove --purge -y "$package"; then
-        log_error "Error removing: $package"
-    else
-        echo "✅ Removed: $package"
-    fi
-}
-
-install_flatpak_package() {
-    local package="$1"
-    echo "📦 Installing Flatpak: $package"
-    if ! flatpak install -y flathub "$package"; then
-        log_error "Error installing Flatpak package: $package"
-    else
-        echo "✅ Installed: $package"
-    fi
-}
-
-# -----------------------------------
-# 📦 PROCESS USER PACKAGE LISTS
-# -----------------------------------
-echo "📦 Installing user-defined APT packages..."
-for pkg in "${INSTALL_APT_PACKAGES[@]}"; do
-    install_apt_package "$pkg"
-done
-
-echo "🗑 Removing user-defined APT packages..."
-for pkg in "${REMOVE_APT_PACKAGES[@]}"; do
-    remove_apt_package "$pkg"
-done
-
-echo "📦 Installing user-defined Flatpak applications..."
-for pkg in "${INSTALL_FLATPAKS[@]}"; do
-    install_flatpak_package "$pkg"
-done
-
-# -----------------------------------
-# 🔄 PROMPT FOR REBOOT
-# -----------------------------------
-read -rp "Setup complete! Reboot now? (Y/N): " REBOOT_NOW
-if [[ "$REBOOT_NOW" =~ ^[Yy]$ ]]; then
-    echo "🔄 Rebooting..."
-    sudo reboot
-else
-    echo "✅ GNOME setup complete. Please reboot manually."
-fi
+echo "✅ GNOME installed! Please log out and log back into GNOME to complete the setup."
