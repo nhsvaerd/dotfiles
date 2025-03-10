@@ -3,3 +3,6 @@ mc
 wget
 curl
 btop
+links
+rsync
+syncthing
