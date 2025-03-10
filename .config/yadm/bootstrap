@@ -1,38 +1,39 @@
 #!/bin/bash
 
-echo "Running YADM bootstrap script..."
+echo "Running YADM Bootstrap..."
 
-# Define essential packages
-ESSENTIAL_PACKAGES=(
-    curl
-    wget
-    links
-    mc
-    micro
-    btop
-    tldr
-    rsync
-    syncthing
-)
+# -----------------------------------
+# DEFINE PATH TO PACKAGE LIST
+# -----------------------------------
+CLI_PACKAGE_LIST="$HOME/.config/yadm/packages-cli.txt"
 
-# Install essential APT packages
-echo "📦 Installing essential packages..."
-sudo apt update
-for pkg in "${ESSENTIAL_PACKAGES[@]}"; do
-    echo "Installing: $pkg"
-    sudo apt install -y "$pkg"
-done
+# -----------------------------------
+# INSTALL ESSENTIAL CLI PACKAGES
+# -----------------------------------
+echo "📦 Installing essential CLI tools..."
+sudo apt-get update
 
-# Fetch all remote branches
+if [[ -f "$CLI_PACKAGE_LIST" ]]; then
+    while read -r package; do
+        [[ -z "$package" || "$package" == "#"* ]] && continue  # Skip empty lines and comments
+        echo "📦 Installing: $package"
+        if ! sudo apt-get install -y "$package"; then
+            echo "❌ Failed to install: $package" >&2
+        else
+            echo "✅ Installed: $package"
+        fi
+    done < "$CLI_PACKAGE_LIST"
+else
+    echo "⚠️ No CLI package list found. Skipping essential package installation."
+fi
+
+# -----------------------------------
+# FETCH REMOTE BRANCHES AND PROMPT USER
+# -----------------------------------
 yadm fetch --all
-
-# Detect current branch
 CURRENT_BRANCH=$(yadm branch --show-current)
+AVAILABLE_BRANCHES=$(yadm branch -r | grep -vE "HEAD" | sed 's|origin/||' | sort -u)
 
-# List remote branches (remote only, excluding HEAD)
-AVAILABLE_BRANCHES=$(yadm ls-remote --heads | awk -F'/' '{print $3}')
-
-# Prompt user to select a branch
 echo "Available setup profiles:"
 PS3="Select a branch to configure the system: "
 select SELECTED_BRANCH in $AVAILABLE_BRANCHES "Skip"; do
@@ -47,7 +48,9 @@ select SELECTED_BRANCH in $AVAILABLE_BRANCHES "Skip"; do
     fi
 done
 
-# Checkout the selected branch if different from the current one
+# -----------------------------------
+# SWITCH TO SELECTED BRANCH
+# -----------------------------------
 if [[ "$SELECTED_BRANCH" != "$CURRENT_BRANCH" ]]; then
     echo "🌐 Switching to branch: $SELECTED_BRANCH..."
     if ! yadm rev-parse --verify "$SELECTED_BRANCH" &>/dev/null; then
@@ -64,18 +67,14 @@ if [[ "$SELECTED_BRANCH" != "$CURRENT_BRANCH" ]]; then
 fi
 echo "✅ Repository is up to date!"
 
-# Ensure setup script exists
+# -----------------------------------
+# EXECUTE BRANCH-SPECIFIC SETUP SCRIPT
+# -----------------------------------
 SETUP_SCRIPT="$HOME/.config/yadm/setup.sh"
-if [[ ! -f "$SETUP_SCRIPT" ]]; then
-    echo "⚠️ No setup script found at $SETUP_SCRIPT. Skipping further setup."
-    exit 0
+if [[ -f "$SETUP_SCRIPT" ]]; then
+    chmod +x "$SETUP_SCRIPT"
+    echo "🔧 Running branch-specific setup..."
+    exec "$SETUP_SCRIPT"
+else
+    echo "⚠️ No setup script found at $SETUP_SCRIPT. Skipping setup."
 fi
-
-# Make setup script executable if needed
-chmod +x "$SETUP_SCRIPT"
-
-# Run setup script
-echo "🔧 Running environment setup..."
-exec "$SETUP_SCRIPT"
-
-echo "✅ Bootstrap complete"
